@@ -1,0 +1,12 @@
+# Core dependencies
+numpy>=1.20
+scipy>=1.7
+astropy>=5.0
+
+# StreaMax for stream generation (JAX-accelerated particle spray)
+StreaMAX @ git+https://github.com/David-Chemaly/StreaMAX.git
+
+# Development dependencies
+pytest>=6.0
+black>=21.0
+flake8>=3.9

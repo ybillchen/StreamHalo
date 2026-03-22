@@ -44,7 +44,8 @@ Thumbs.db
 data/
 
 # Test outputs and cache
-tests/outputs/
+tests/outputs/*
+!tests/outputs/.gitkeep
 .pytest_cache/
 
 # Claude Code

@@ -9,7 +9,8 @@ class MockHalo:
     """Mock stellar halo with tidal streams."""
 
     def __init__(self, host_potential_type, host_params, n_satellites=10,
-                 mass_function='powerlaw', n_stream_particles=1000, rng=None):
+                 mass_function='powerlaw', n_stream_particles=1000, rng=None,
+                 method='Chen2025'):
         """Initialize halo generator."""
         self.host_potential_type = host_potential_type
         self.host_params = host_params
@@ -18,7 +19,8 @@ class MockHalo:
 
         self.satellites = SatellitePopulation(mass_function, rng=rng)
         self.stream_gen = StreamGenerator(
-            host_potential_type, host_params, n_particles=n_stream_particles
+            host_potential_type, host_params, n_particles=n_stream_particles,
+            method=method,
         )
         self.halo_particles = None
         self.streams = []
@@ -41,16 +43,18 @@ class MockHalo:
         if total_stream_particles is None:
             total_stream_particles = self.stream_gen.n_particles * self.n_satellites
 
+        stellar_masses = sat_data['stellar_masses']
+
         if mass_proportional:
-            total_mass = np.sum(sat_data['masses'])
-            particles_per_sat_float = (sat_data['masses'] / total_mass) * total_stream_particles
+            total_stellar = np.sum(stellar_masses)
+            particles_per_sat_float = (stellar_masses / total_stellar) * total_stream_particles
         else:
             particles_per_sat_float = np.full(self.n_satellites, total_stream_particles / self.n_satellites)
 
         particles_per_sat = np.round(particles_per_sat_float).astype(int)
         diff = total_stream_particles - np.sum(particles_per_sat)
         if diff != 0:
-            idx_largest = np.argmax(sat_data['masses'])
+            idx_largest = np.argmax(stellar_masses)
             particles_per_sat[idx_largest] += diff
 
         divisor = n_steps
@@ -62,14 +66,14 @@ class MockHalo:
         new_total = np.sum(particles_per_sat)
         if new_total != total_stream_particles:
             adjustment = total_stream_particles - new_total
-            particles_per_sat[np.argmax(sat_data['masses'])] += adjustment
+            particles_per_sat[np.argmax(stellar_masses)] += adjustment
         all_positions = []
         all_velocities = []
         all_stream_index = []
 
         for i in range(self.n_satellites):
             satellite_params = {
-                'logM': sat_data['logM'][i],
+                'logM': sat_data['logM_halo'][i],
                 'Rs': satellite_scale_radius
             }
 
@@ -95,7 +99,8 @@ class MockHalo:
             'velocities': np.vstack(all_velocities),
             'stream_index': np.concatenate(all_stream_index),
             'n_streams': self.n_satellites,
-            'satellite_masses': sat_data['masses'],
+            'satellite_halo_masses': sat_data['halo_masses'],
+            'satellite_stellar_masses': sat_data['stellar_masses'],
         }
 
         return self.halo_particles

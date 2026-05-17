@@ -1,16 +1,8 @@
 # StreamHalo
 
-A Python package for generating mock stellar halos composed of tidal streams from satellite galaxies.
+Mock stellar halo generator: sample satellite galaxies, spray tidal streams, add a smooth background.
 
-## Overview
-
-StreamHalo uses particle spray methods and StreaMax to simulate stellar streams in mock galaxy halos. The package:
-
-- Generates satellite galaxy populations following mass functions
-- Creates tidal streams from satellite progenitors using StreaMax (JAX-accelerated)
-- Assembles complete mock stellar halos with background populations
-
-Leverages StreaMax's 10 built-in potential models and JAX acceleration for fast stream generation.
+Backed by [StreaMAX](https://github.com/David-Chemaly/StreaMAX) for JAX-accelerated particle spray.
 
 ## Installation
 
@@ -18,104 +10,115 @@ Leverages StreaMax's 10 built-in potential models and JAX acceleration for fast 
 pip install -e .
 ```
 
-## Quick Start
+Requires StreaMAX installed and accessible as `StreaMAX` on the Python path.
+
+## Quick start
 
 ```python
-from streamhalo.halo import MockHalo
-
-# Define host potential parameters (StreaMax NFW potential)
-host_potential = 'NFW'
-host_params = {
-    'logM': 12.0,           # Log10(mass in solar masses)
-    'Rs': 25.0,             # Scale radius in kpc
-    'a': 1.0, 'b': 1.0, 'c': 1.0,  # Triaxial flattening
-}
-
-# Create mock halo with 10 satellites
-halo = MockHalo(
-    host_potential_type=host_potential,
-    host_params=host_params,
-    n_satellites=10,
-    n_stream_particles=1000
-)
-
-# Generate individual streams
 import numpy as np
-time = np.linspace(0, 10, 100)  # 10 Gyr integration
+from streamhalo import MockHalo
+from streamhalo.potentials import tidal_radius
+from streamhalo.sampling import make_broken_powerlaw_position_sampler, uniform_velocity_sampler
 
-satellite_ic = np.array([100, 0, 0, 50, 50, 50])  # Initial conditions
-satellite_params = {'logM': 8.0, 'Rs': 1.0}
+_origin = {'x_origin': 0.0, 'y_origin': 0.0, 'z_origin': 0.0,
+           'dirx': 0.0, 'diry': 0.0, 'dirz': 1.0}
+host_potential_type = 'Composite:MiyamotoNagai,Hernquist,Hernquist,NFW'
+host_params = [
+    {'logM': np.log10(4.77e10), 'Rs': 2.6,  'Hs': 0.3, **_origin},  # disk
+    {'logM': np.log10(5e9),     'Rs': 1.0,             **_origin},  # bulge
+    {'logM': np.log10(1.81e9),  'Rs': 0.069,           **_origin},  # nucleus
+    {'logM': np.log10(5.54e11), 'Rs': 15.6,
+     'a': 1.0, 'b': 1.0, 'c': 1.0,        **_origin},  # NFW halo
+]
+nfw = host_params[3]
 
-stream = halo.add_stream(
-    satellite_ic,
-    satellite_potential_type='Plummer',
-    satellite_params=satellite_params,
-    time=time
+halo = MockHalo(
+    host_potential_type, host_params,
+    mass_function='powerlaw', alpha=-1.9, M_min=1e7, M_max=3e10,
 )
+
+halo.sample_satellites(
+    stellar_mass_target=1e9,
+    position_sampler=make_broken_powerlaw_position_sampler(r_min=2, r_max=100),
+    velocity_sampler=uniform_velocity_sampler,
+)
+
+halo.generate_streams(
+    target_particles=50000,
+    plummer_scale=lambda r, M: 0.1 * tidal_radius(r, M, nfw['logM'], nfw['Rs']),
+)
+
+halo.generate_background(
+    n_particles=50000,
+    position_sampler=make_broken_powerlaw_position_sampler(r_min=2, r_max=200),
+)
+
+halo.save('mock_halo.npz')
+
+pos   = halo.combined_positions   # (N, 3) kpc
+idx   = halo.combined_index       # satellite id, -1 = background
 ```
 
-## Available Potentials
+## Workflow
 
-StreaMax supports 10 potential models:
+```
+MockHalo(potential, params, mass_function=...)
+    └─ sample_satellites(stellar_mass_target | n_satellites,
+                         position_sampler, velocity_sampler)
+    └─ generate_streams(target_particles, plummer_scale=...)
+    └─ generate_background(n_particles, position_sampler)
+    └─ save(path)
+```
 
-1. **PointMass** - Simple inverse-distance
-2. **Isochrone** - Core-softened spherical
-3. **Plummer** - Softened point mass
-4. **NFW** - Navarro-Frenk-White (triaxial)
-5. **MiyamotoNagai** - Realistic disk galaxy
-6. **Hernquist** - Elliptical galaxy profile
-7. **Logarithmic** - Isothermal potential
-8. **ExpDisk** - Exponential disk
-9. **Bar** - Time-dependent bar
-10. **NFW_MiyamotoNagai** - Composite NFW + disk
+`generate_streams` allocates particles mass-proportionally across satellites and skips those below `min_particles` (default 100).
 
-## Package Structure
+## Package structure
 
-- `satellites.py` - Satellite galaxy generation with mass functions
-- `streams.py` - Stream generation using StreaMax particle spray methods
-- `halo.py` - Main mock halo orchestration
-- `utils.py` - Utility functions (I/O, visualization, analysis)
+| Module | Contents |
+|---|---|
+| `halo.py` | `MockHalo` — main orchestrator |
+| `satellites.py` | `SatellitePopulation` — mass function sampling + SHMR |
+| `streams.py` | `StreamGenerator` — wraps StreaMAX |
+| `potentials.py` | `v_esc`, `tidal_radius`, `composite_phi` |
+| `sampling.py` | position/velocity sampler primitives and factories |
 
-## Dependencies
+## Satellite mass functions
 
-- numpy, scipy, astropy - Scientific computing
-- StreaMax - JAX-accelerated particle spray stream simulator
+`SatellitePopulation` supports three mass functions:
 
-## Satellite Mass Function
+| `mass_function=` | Description |
+|---|---|
+| `'powerlaw'` | Pure power law dN/dM ∝ M^α |
+| `'truncated_powerlaw'` | Same, with exponential cutoff at `M_star` |
+| `'schechter'` | Schechter function (rejection sampling) |
 
-StreamHalo uses power-law mass functions for satellite galaxies:
+Stellar masses are computed via the Behroozi+2013 SHMR at z=0 (`shmr='behroozi13'`, default) or a constant fraction (`shmr='constant'`).
+
+## Potentials
+
+Any StreaMAX potential or composite thereof:
 
 ```python
-from streamhalo.satellites import SatellitePopulation
+# Single component
+host_potential_type = 'NFW'
+host_params = [{'logM': 12.0, 'Rs': 15.0, 'a': 1.0, 'b': 1.0, 'c': 1.0, ...}]
 
-# Create population with power-law mass function (α = -1.9)
-sat_pop = SatellitePopulation(
-    mass_function='powerlaw',
-    alpha=-1.9,          # Typical value for dwarf galaxies
-    M_min=1e7,           # 10^7 solar masses
-    M_max=1e10,          # 10^10 solar masses
-)
-
-# Sample satellites with orbital parameters
-satellites = sat_pop.generate(
-    n_satellites=10,
-    orbital_parameters={
-        'velocity_scale': 100.0,      # km/s
-        'radial_range': (20.0, 150.0) # kpc
-    }
-)
-
-# Access StreaMax-ready data
-logM = satellites['logM']              # log10 masses
-initial_conditions = satellites['initial_conditions']  # [x,y,z,vx,vy,vz]
+# Composite (colon-separated list)
+host_potential_type = 'Composite:MiyamotoNagai,Hernquist,NFW'
+host_params = [disk_params, bulge_params, halo_params]
 ```
 
-## TODO
+Available components: `PointMass`, `Isochrone`, `Plummer`, `NFW`, `MiyamotoNagai`, `Hernquist`, `Logarithmic`, `ExpDisk`, `Bar`.
 
-- [x] Implement mass function sampling for satellite generation
-- [ ] Complete halo assembly pipeline
-- [ ] Add background stellar population generation
-- [ ] Add I/O utilities for saving/loading halos
-- [ ] Add visualization functions
-- [ ] Add unit tests
-- [ ] Add example notebooks with different potentials
+## Utilities
+
+```python
+from streamhalo.potentials import v_esc, tidal_radius
+from streamhalo.sampling import (
+    make_broken_powerlaw_position_sampler,
+    make_hernquist_velocity_sampler,
+    uniform_velocity_sampler,
+    sample_r_broken_powerlaw,
+    sample_v_hernquist,
+)
+```

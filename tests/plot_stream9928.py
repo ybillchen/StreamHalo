@@ -34,60 +34,66 @@ N_STEPS_STREAMAX = 3999
 N_PARTICLES = 4000
 PROJ = 300.0  # kpc
 
-output_dir = 'tests/outputs/stream5247'
-os.makedirs(output_dir, exist_ok=True)
 
-print('Generating stream...')
-_, xv_sat, xv_stream, _ = streamax_generate_stream(
-    SATELLITE_IC,
-    HOST_POTENTIAL_TYPE,
-    HOST_PARAMS,
-    'Plummer',
-    SATELLITE_PARAMS,
-    T_INT,
-    ALPHA,
-    N_STEPS_STREAMAX,
-    N_PARTICLES,
-    False,
-    m_f_sat=M_F_SAT,
-    type_method='Chen2025',
-)
+def main():
+    output_dir = 'tests/outputs/stream5247'
+    os.makedirs(output_dir, exist_ok=True)
 
-pos = np.array(xv_stream[:, :3])
-sat = np.array(xv_sat[-1, :3])
+    print('Generating stream...')
+    _, xv_sat, xv_stream, _ = streamax_generate_stream(
+        SATELLITE_IC,
+        HOST_POTENTIAL_TYPE,
+        HOST_PARAMS,
+        'Plummer',
+        SATELLITE_PARAMS,
+        T_INT,
+        ALPHA,
+        N_STEPS_STREAMAX,
+        N_PARTICLES,
+        False,
+        m_f_sat=M_F_SAT,
+        type_method='Chen2025',
+    )
 
-fig, axes = plt.subplots(1, 2, figsize=(10, 5), facecolor='black')
-fig.subplots_adjust(wspace=0.05)
+    pos = np.array(xv_stream[:, :3])
+    sat = np.array(xv_sat[-1, :3])
 
-panels = [
-    (axes[0], pos[:, 0], pos[:, 1], sat[0], sat[1], 'x (kpc)', 'y (kpc)', 'XY'),
-    (axes[1], pos[:, 0], pos[:, 2], sat[0], sat[2], 'x (kpc)', 'z (kpc)', 'XZ'),
-]
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5), facecolor='black')
+    fig.subplots_adjust(wspace=0.05)
 
-for ax, px, py, sx, sy, xl, yl, title in panels:
-    ax.set_facecolor('black')
-    ax.scatter(px, py, s=1, c='cyan', alpha=0.5, rasterized=True)
-    ax.plot(sx, sy, 'o', color='yellow', markersize=6, zorder=5, label='Satellite')
-    ax.set_xlim(-PROJ, PROJ)
-    ax.set_ylim(-PROJ, PROJ)
-    ax.set_aspect('equal')
-    ax.set_xlabel(xl, color='white')
-    ax.set_ylabel(yl, color='white')
-    ax.set_title(title, color='white', fontsize=10)
-    ax.tick_params(colors='white')
-    for spine in ax.spines.values():
-        spine.set_edgecolor('white')
+    panels = [
+        (axes[0], pos[:, 0], pos[:, 1], sat[0], sat[1], 'x (kpc)', 'y (kpc)', 'XY'),
+        (axes[1], pos[:, 0], pos[:, 2], sat[0], sat[2], 'x (kpc)', 'z (kpc)', 'XZ'),
+    ]
 
-axes[0].legend(loc='upper right', fontsize=8,
-               labelcolor='white', facecolor='black', edgecolor='white')
-axes[1].yaxis.set_label_position('right')
-axes[1].yaxis.tick_right()
+    for ax, px, py, sx, sy, xl, yl, title in panels:
+        ax.set_facecolor('black')
+        ax.scatter(px, py, s=1, c='cyan', alpha=0.5, rasterized=True)
+        ax.plot(sx, sy, 'o', color='yellow', markersize=6, zorder=5, label='Satellite')
+        ax.set_xlim(-PROJ, PROJ)
+        ax.set_ylim(-PROJ, PROJ)
+        ax.set_aspect('equal')
+        ax.set_xlabel(xl, color='white')
+        ax.set_ylabel(yl, color='white')
+        ax.set_title(title, color='white', fontsize=10)
+        ax.tick_params(colors='white')
+        for spine in ax.spines.values():
+            spine.set_edgecolor('white')
 
-r_med = np.median(np.linalg.norm(pos, axis=1))
-fig.suptitle(f'Stream #5247 — t = {T_INT} Gyr  |  median r = {r_med:.1f} kpc',
-             color='white', fontsize=11, y=1.01)
+    axes[0].legend(loc='upper right', fontsize=8,
+                   labelcolor='white', facecolor='black', edgecolor='white')
+    axes[1].yaxis.set_label_position('right')
+    axes[1].yaxis.tick_right()
 
-out_path = f'{output_dir}/stream5247_snapshot.png'
-plt.savefig(out_path, dpi=150, bbox_inches='tight', facecolor='black')
-plt.close()
-print(f'Saved: {out_path}')
+    r_med = np.median(np.linalg.norm(pos, axis=1))
+    fig.suptitle(f'Stream #5247 — t = {T_INT} Gyr  |  median r = {r_med:.1f} kpc',
+                 color='white', fontsize=11, y=1.01)
+
+    out_path = f'{output_dir}/stream5247_snapshot.png'
+    plt.savefig(out_path, dpi=150, bbox_inches='tight', facecolor='black')
+    plt.close()
+    print(f'Saved: {out_path}')
+
+
+if __name__ == '__main__':
+    main()

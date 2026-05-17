@@ -6,20 +6,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-from StreaMAX.StreaMAX.potentials import (
-    NFW_potential, Hernquist_potential, MiyamotoNagai_potential
-)
-from StreaMAX.StreaMAX.utils import prepare_params as stremax_prepare_params
-from StreaMAX.StreaMAX.constants import KPCGYR_TO_KMS
+from streamhalo.potentials import v_esc as _v_esc
 
 GALAXIA_DATA = '/Users/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
 BJ_HALO = 'halo07'
-
-_POT_FNS = {
-    'NFW': NFW_potential,
-    'Hernquist': Hernquist_potential,
-    'MiyamotoNagai': MiyamotoNagai_potential,
-}
 
 _origin = {'x_origin': 0.0, 'y_origin': 0.0, 'z_origin': 0.0,
            'dirx': 0.0, 'diry': 0.0, 'dirz': 1.0}
@@ -34,14 +24,7 @@ HOST_PARAMS = [
 
 
 def v_esc(r, host_potential_type=HOST_POTENTIAL_TYPE, host_params=HOST_PARAMS, r_vir=200.0):
-    """Escape velocity (km/s) with virial radius as zero-point: v_esc²=2*(Phi(r_vir)-Phi(r))."""
-    comp_types = host_potential_type.split(':')[1].split(',')
-    def _phi(radius):
-        return sum(
-            float(_POT_FNS[t](float(radius), 0.0, 0.0, stremax_prepare_params(p)))
-            for t, p in zip(comp_types, host_params)
-        )
-    return float(np.sqrt(2.0 * (_phi(r_vir) - _phi(r))) * KPCGYR_TO_KMS)
+    return _v_esc(r, host_potential_type, host_params, r_vir=r_vir)
 
 
 def load_bj05_positions(halo=BJ_HALO):

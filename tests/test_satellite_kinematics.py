@@ -5,11 +5,8 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-from tests.test_mock_halo import (
-    _POT_FNS, v_esc,
-    sample_r_broken_powerlaw,
-    sample_v_hernquist,
-)
+from streamhalo.potentials import v_esc
+from streamhalo.sampling import sample_r_broken_powerlaw, sample_v_hernquist
 
 
 def test_satellite_kinematics():

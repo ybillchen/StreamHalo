@@ -1,7 +1,7 @@
 """Stream generation using StreaMax particle spray method."""
 
 try:
-    from StreaMAX.StreaMAX import generate_stream as streamax_generate_stream
+    from StreaMAX.generator import generate_stream as streamax_generate_stream
 except ImportError:
     raise ImportError("StreaMAX is required. Install from https://github.com/David-Chemaly/StreaMAX")
 

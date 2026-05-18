@@ -16,12 +16,14 @@ _POT_FNS = {
 
 
 def composite_phi(r, host_potential_type, host_params):
-    """Composite potential at radius r (evaluated along the x-axis)."""
-    comp_types = host_potential_type.split(':')[1].split(',')
-    return sum(
-        float(_POT_FNS[t](float(r), 0.0, 0.0, stremax_prepare_params(p)))
-        for t, p in zip(comp_types, host_params)
-    )
+    """Potential at radius r (evaluated along the x-axis), simple or composite."""
+    if ':' in host_potential_type:
+        comp_types = host_potential_type.split(':')[1].split(',')
+        return sum(
+            float(_POT_FNS[t](float(r), 0.0, 0.0, stremax_prepare_params(p)))
+            for t, p in zip(comp_types, host_params)
+        )
+    return float(_POT_FNS[host_potential_type](float(r), 0.0, 0.0, stremax_prepare_params(host_params)))
 
 
 def v_esc(r, host_potential_type, host_params, r_vir=200.0):

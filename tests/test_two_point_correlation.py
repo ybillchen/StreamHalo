@@ -17,9 +17,10 @@ from streamhalo.sampling import (
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-GALAXIA_DATA   = '/home/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
-BJ_HALO        = 'halo02'
-SHORT_IDX_PATH = 'tests/outputs/bj05_comparison/bj05_short_stream_indices.npy'
+GALAXIA_DATA = '/Users/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
+BJ_HALO      = 'halo08'
+R_HALF_MAX   = 10.0  # kpc — exclude progenitors whose stream half-mass radius is below this
+R_GC_MIN     = 10.0  # kpc — exclude progenitors whose CM is closer than this to the GC
 
 OBSERVER    = np.array([8.0, 0.0, 0.0])  # kpc — solar galactocentric position
 SIGMA_ANGLE = 10.0                        # deg — shuffle width for random catalogue
@@ -145,6 +146,19 @@ def compute_w_with_errors(l, b, theta_bins, n_random=50_000,
 # Data loaders
 # ---------------------------------------------------------------------------
 
+def _short_stream_indices(positions, index,
+                          r_half_max=R_HALF_MAX, r_gc_min=R_GC_MIN):
+    """Return progenitor indices whose streams are spatially compact and not too close-in."""
+    short = []
+    for prog in np.unique(index):
+        mask = index == prog
+        r_cm = positions[mask].mean(axis=0)
+        r_half = np.median(np.linalg.norm(positions[mask] - r_cm, axis=1))
+        if r_half < r_half_max and np.linalg.norm(r_cm) > r_gc_min:
+            short.append(prog)
+    return np.array(short, dtype=int)
+
+
 def _build_mock_halo(rng):
     """Fallback: build a MockHalo matching the test_mock_halo_generation setup."""
     _orig = {'x_origin': 0.0, 'y_origin': 0.0, 'z_origin': 0.0,
@@ -223,9 +237,9 @@ def _load_bj05_positions(n_match=None, rng=None):
     masses    = np.concatenate(all_mass)
     index     = np.concatenate(all_idx)
 
-    if os.path.exists(SHORT_IDX_PATH):
-        short = set(np.load(SHORT_IDX_PATH).tolist())
-        keep  = ~np.isin(index, list(short))
+    short = _short_stream_indices(positions, index)
+    if len(short):
+        keep = ~np.isin(index, short)
         positions, masses, index = positions[keep], masses[keep], index[keep]
         print(f"  [BJ05] Excluded {len(short)} short-stream progenitors; "
               f"{len(positions):,} particles remain.")

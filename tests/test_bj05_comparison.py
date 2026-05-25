@@ -8,8 +8,10 @@ import pytest
 
 from streamhalo.potentials import v_esc as _v_esc
 
-GALAXIA_DATA = '/home/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
-BJ_HALO = 'halo02'
+GALAXIA_DATA = '/Users/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
+BJ_HALO = 'halo08'
+R_HALF_MAX = 10.0  # kpc — exclude progenitors whose stream half-mass radius is below this
+R_GC_MIN   = 10.0  # kpc — exclude progenitors whose CM is closer than this to the GC
 
 _origin = {'x_origin': 0.0, 'y_origin': 0.0, 'z_origin': 0.0,
            'dirx': 0.0, 'diry': 0.0, 'dirz': 1.0}
@@ -25,6 +27,19 @@ HOST_PARAMS = [
 
 def v_esc(r, host_potential_type=HOST_POTENTIAL_TYPE, host_params=HOST_PARAMS, r_vir=200.0):
     return _v_esc(r, host_potential_type, host_params, r_vir=r_vir)
+
+
+def _short_stream_indices(positions, index,
+                          r_half_max=R_HALF_MAX, r_gc_min=R_GC_MIN):
+    """Return progenitor indices whose streams are spatially compact and not too close-in."""
+    short = []
+    for prog in np.unique(index):
+        mask = index == prog
+        r_cm = positions[mask].mean(axis=0)
+        r_half = np.median(np.linalg.norm(positions[mask] - r_cm, axis=1))
+        if r_half < r_half_max and np.linalg.norm(r_cm) > r_gc_min:
+            short.append(prog)
+    return np.array(short, dtype=int)
 
 
 def load_bj05_positions(halo=BJ_HALO):
@@ -117,15 +132,37 @@ def test_bj05_comparison():
     # --- Load B&J 2005 data ---
     bj_positions, bj_velocities, bj_masses, bj_index, bj_sat_masses = load_bj05_positions()
 
-    # --- Exclude short streams ---
-    short_idx_path = 'tests/outputs/bj05_comparison/bj05_short_stream_indices.npy'
-    if os.path.exists(short_idx_path):
-        short_indices = set(np.load(short_idx_path).tolist())
-        keep = ~np.isin(bj_index, list(short_indices))
-        bj_positions = bj_positions[keep]
-        bj_velocities = bj_velocities[keep]
-        bj_masses = bj_masses[keep]
-        bj_index = bj_index[keep]
+    # --- Identify and exclude short (compact) streams ---
+    short_indices = _short_stream_indices(bj_positions, bj_index)
+    print(f"\nShort streams (r_half < {R_HALF_MAX} kpc, r_gc > {R_GC_MIN} kpc): "
+          f"{len(short_indices)} / {len(np.unique(bj_index))}")
+    print(f"Progenitor indices: {short_indices.tolist()}")
+
+    # --- Plot short streams (XY projection) ---
+    cmap = plt.get_cmap('tab20')
+    short_set = set(short_indices.tolist())
+    if len(short_indices):
+        fig, ax = plt.subplots(figsize=(6, 6))
+        for prog in short_indices:
+            mask = bj_index == prog
+            r_cm = bj_positions[mask].mean(axis=0)
+            ax.scatter(bj_positions[mask, 0], bj_positions[mask, 1],
+                       s=2, alpha=0.6, color=cmap(prog % 20), rasterized=True)
+            ax.annotate(f'{prog}', xy=(r_cm[0], r_cm[1]),
+                        fontsize=6, color=cmap(prog % 20), ha='center')
+        ax.set_xlabel('$x$ (kpc)');  ax.set_ylabel('$y$ (kpc)')
+        ax.set_xlim(-100, 100);  ax.set_ylim(-100, 100);  ax.set_aspect('equal')
+        ax.set_title(f'BJ05 {BJ_HALO}: short streams '
+                     f'($r_{{1/2}} < {R_HALF_MAX}$ kpc, $N={len(short_indices)}$)')
+        plt.tight_layout()
+        plt.savefig(f'{output_dir}/bj05_short_streams_xy.png', dpi=150, bbox_inches='tight')
+        plt.close()
+
+    keep = ~np.isin(bj_index, short_indices)
+    bj_positions  = bj_positions[keep]
+    bj_velocities = bj_velocities[keep]
+    bj_masses     = bj_masses[keep]
+    bj_index      = bj_index[keep]
 
     # --- Load StreamHalo results from test_mock_halo (needed for mass threshold) ---
     cache_path = 'tests/outputs/mock_halo_cache.npz'

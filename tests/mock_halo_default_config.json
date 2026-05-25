@@ -1,0 +1,67 @@
+{
+  "f_stream": 0.5,
+  "total_particles": 100000,
+  "min_stream_particles": 100,
+  "satellite_stellar_mass_target": 1000000000.0,
+  "mass_function": "powerlaw",
+  "alpha_mf": -1.9,
+  "M_min": 10000000.0,
+  "M_max": 30000000000.0,
+  "integration_time": 4.0,
+  "dt": 0.5,
+  "r_min": 2.0,
+  "r_max_sat": 100.0,
+  "r_max_bg": 200.0,
+  "alpha_inner": -3.0,
+  "alpha_outer": -3.0,
+  "plummer_tidal_fraction": 0.1,
+  "nfw_component_index": 3,
+  "projection_range": 200.0,
+  "host_potential_type": "Composite:MiyamotoNagai,Hernquist,Hernquist,NFW",
+  "host_params": [
+    {
+      "logM": 10.678673131469356,
+      "Rs": 2.6,
+      "Hs": 0.3,
+      "x_origin": 0.0,
+      "y_origin": 0.0,
+      "z_origin": 0.0,
+      "dirx": 0.0,
+      "diry": 0.0,
+      "dirz": 1.0
+    },
+    {
+      "logM": 9.698970004336019,
+      "Rs": 1.0,
+      "x_origin": 0.0,
+      "y_origin": 0.0,
+      "z_origin": 0.0,
+      "dirx": 0.0,
+      "diry": 0.0,
+      "dirz": 1.0
+    },
+    {
+      "logM": 9.258685162607472,
+      "Rs": 0.0688867,
+      "x_origin": 0.0,
+      "y_origin": 0.0,
+      "z_origin": 0.0,
+      "dirx": 0.0,
+      "diry": 0.0,
+      "dirz": 1.0
+    },
+    {
+      "logM": 11.74372137293299,
+      "Rs": 15.626,
+      "a": 1.0,
+      "b": 1.0,
+      "c": 1.0,
+      "x_origin": 0.0,
+      "y_origin": 0.0,
+      "z_origin": 0.0,
+      "dirx": 0.0,
+      "diry": 0.0,
+      "dirz": 1.0
+    }
+  ]
+}

@@ -8,8 +8,8 @@ import pytest
 
 from streamhalo.potentials import v_esc as _v_esc
 
-GALAXIA_DATA = '/Users/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
-BJ_HALO = 'halo07'
+GALAXIA_DATA = '/home/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
+BJ_HALO = 'halo02'
 
 _origin = {'x_origin': 0.0, 'y_origin': 0.0, 'z_origin': 0.0,
            'dirx': 0.0, 'diry': 0.0, 'dirz': 1.0}

@@ -7,8 +7,8 @@ import ebf
 import matplotlib.pyplot as plt
 import numpy as np
 
-GALAXIA_DATA = '/Users/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
-BJ_HALO = 'halo07'
+GALAXIA_DATA = '/home/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
+BJ_HALO = 'halo02'
 R_HALF_MAX = 10.0  # kpc
 OUTPUT_DIR = 'tests/outputs/bj05_comparison'
 

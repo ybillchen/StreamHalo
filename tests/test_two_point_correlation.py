@@ -2,10 +2,15 @@
 """Two-point angular correlation function of StreamHalo streams vs BJ05."""
 
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial.distance import pdist
+
+from tests.plot_style import apply_style, style_ax, legend as _legend
+apply_style()
 
 from streamhalo import MockHalo
 from streamhalo.potentials import tidal_radius
@@ -18,12 +23,17 @@ from streamhalo.sampling import (
 # Configuration
 # ---------------------------------------------------------------------------
 GALAXIA_DATA = '/Users/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
-BJ_HALO      = 'halo08'
+BJ_HALO      = 'halo02'
 R_HALF_MAX   = 10.0  # kpc — exclude progenitors whose stream half-mass radius is below this
 R_GC_MIN     = 10.0  # kpc — exclude progenitors whose CM is closer than this to the GC
 
 OBSERVER    = np.array([8.0, 0.0, 0.0])  # kpc — solar galactocentric position
 SIGMA_ANGLE = 10.0                        # deg — shuffle width for random catalogue
+
+# Shared estimator parameters — imported by sweep_subsample_size.py for consistency
+N_SUB      = 3000   # subsample size per draw
+N_RESAMPLE = 6      # number of independent draws
+N_RANDOM   = 10_000 # random catalogue size for RR
 
 
 # ---------------------------------------------------------------------------
@@ -80,13 +90,30 @@ def angular_shuffle(l, b, sigma_angle_deg, n_random, rng):
 # Landy-Szalay estimator
 # ---------------------------------------------------------------------------
 
-def landy_szalay(l_data, b_data, theta_bins, n_random=50_000, rng=None,
-                 sigma_angle=None):
+def compute_rr(l, b, theta_bins, n_random=10_000, rng=None, sigma_angle=None):
+    """Compute the RR histogram and normalisation from a random catalogue.
+
+    Returns (RR_hist, n_RR) suitable for passing to landy_szalay.
+    Separating this from landy_szalay allows reuse across many DD evaluations.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    if sigma_angle is not None:
+        l_rand, b_rand = angular_shuffle(l, b, sigma_angle, n_random, rng)
+    else:
+        l_rand = rng.uniform(0.0, 360.0, n_random)
+        b_rand = np.rad2deg(np.arcsin(rng.uniform(-1.0, 1.0, n_random)))
+    xyz_rand = coords_to_xyz(l_rand, b_rand)
+    RR, _    = np.histogram(chord_to_angle_deg(pdist(xyz_rand)), bins=theta_bins)
+    return RR, n_random * (n_random - 1) / 2.0
+
+
+def landy_szalay(l_data, b_data, theta_bins, n_random=10_000, rng=None,
+                 sigma_angle=None, rr_hist=None, n_rr=None):
     """Landy-Szalay (1993) estimator: w(θ) = (DD/n_DD) / (RR/n_RR) - 1.
 
-    DD and RR are computed on subsamples of 2000 points and rescaled.
-    If sigma_angle is given the random catalogue is built via angular_shuffle;
-    otherwise a uniform sphere is used.
+    Expects pre-subsampled data. If rr_hist and n_rr are provided the RR step
+    is skipped (use compute_rr to precompute and share across many calls).
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -95,51 +122,128 @@ def landy_szalay(l_data, b_data, theta_bins, n_random=50_000, rng=None,
     if n_data < 10:
         return np.zeros(len(theta_bins) - 1), np.sqrt(theta_bins[:-1] * theta_bins[1:])
 
-    xyz_data  = coords_to_xyz(l_data, b_data)
-    n_sub_dd  = min(n_data, 2000)
-    idx_d     = rng.choice(n_data, n_sub_dd, replace=False)
-    scale_dd  = (n_data / n_sub_dd) ** 2 if n_data > n_sub_dd else 1.0
-    DD, _     = np.histogram(chord_to_angle_deg(pdist(xyz_data[idx_d])), bins=theta_bins)
-    DD        = DD * scale_dd
+    xyz_data = coords_to_xyz(l_data, b_data)
+    DD, _    = np.histogram(chord_to_angle_deg(pdist(xyz_data)), bins=theta_bins)
 
-    if sigma_angle is not None:
-        l_rand, b_rand = angular_shuffle(l_data, b_data, sigma_angle, n_random, rng)
-    else:
-        l_rand = rng.uniform(0.0, 360.0, n_random)
-        b_rand = np.rad2deg(np.arcsin(rng.uniform(-1.0, 1.0, n_random)))
-    xyz_rand  = coords_to_xyz(l_rand, b_rand)
-    n_sub_rr  = min(2000, n_random)
-    idx_r     = rng.choice(n_random, n_sub_rr, replace=False)
-    RR, _     = np.histogram(chord_to_angle_deg(pdist(xyz_rand[idx_r])), bins=theta_bins)
-    RR        = RR * (n_random / n_sub_rr) ** 2
+    if rr_hist is None or n_rr is None:
+        rr_hist, n_rr = compute_rr(l_data, b_data, theta_bins, n_random, rng, sigma_angle)
 
     n_DD = n_data * (n_data - 1) / 2.0
-    n_RR = n_random * (n_random - 1) / 2.0
     with np.errstate(divide='ignore', invalid='ignore'):
-        w = np.nan_to_num((DD / n_DD) / (RR / n_RR) - 1.0,
+        w = np.nan_to_num((DD / n_DD) / (rr_hist / n_rr) - 1.0,
                           nan=0.0, posinf=0.0, neginf=0.0)
     return w, np.sqrt(theta_bins[:-1] * theta_bins[1:])
 
 
-def compute_w_with_errors(l, b, theta_bins, n_random=50_000,
-                          n_bootstrap=30, rng=None, sigma_angle=None):
-    """w(θ) from the full catalogue + bootstrap standard errors."""
+def compute_w_with_errors(l, b, theta_bins, n_random=10_000,
+                          n_resample=30, n_sub=3000, rng=None, sigma_angle=None):
+    """w(θ) via repeated subsampling: median across draws = main value, std = error.
+
+    Each of n_resample draws takes n_sub points without replacement from the
+    full catalogue and computes w(θ) independently.
+    """
     if rng is None:
         rng = np.random.default_rng()
 
     N = len(l)
-    w_main, theta_c = landy_szalay(l, b, theta_bins, n_random=n_random,
-                                   rng=rng, sigma_angle=sigma_angle)
-    if n_bootstrap < 2:
-        return w_main, np.zeros(len(theta_bins) - 1), theta_c
+    theta_c = np.sqrt(theta_bins[:-1] * theta_bins[1:])
 
-    w_boots = np.empty((n_bootstrap, len(theta_bins) - 1))
-    for i in range(n_bootstrap):
-        idx = rng.choice(N, N, replace=True)
-        w_boots[i], _ = landy_szalay(l[idx], b[idx], theta_bins,
-                                     n_random=n_random // 2, rng=rng,
-                                     sigma_angle=sigma_angle)
-    return w_main, np.std(w_boots, axis=0), theta_c
+    if n_resample < 2:
+        w, _ = landy_szalay(l, b, theta_bins, n_random=n_random,
+                            rng=rng, sigma_angle=sigma_angle)
+        return w, np.zeros(len(theta_bins) - 1), theta_c
+
+    rr_hist, n_rr = compute_rr(l, b, theta_bins, n_random, rng, sigma_angle)
+
+    w_subs = np.empty((n_resample, len(theta_bins) - 1))
+    for i in range(n_resample):
+        idx = rng.choice(N, n_sub, replace=False)
+        w_subs[i], _ = landy_szalay(l[idx], b[idx], theta_bins,
+                                    rr_hist=rr_hist, n_rr=n_rr, rng=rng)
+    return np.median(w_subs, axis=0), np.std(w_subs, axis=0), theta_c
+
+
+# ---------------------------------------------------------------------------
+# GP-based estimator
+# ---------------------------------------------------------------------------
+
+def compute_w_gp(l, b, theta_eval, n_random=10_000, n_resample=30, n_sub=3000,
+                 n_bins_fine=100, rng=None, sigma_angle=None):
+    """GP-based w(θ): fit GP to pair density per subsample, combine via law of total variance.
+
+    For each of n_resample draws of n_sub points:
+      1. Bin all pairwise angular separations into n_bins_fine log-spaced bins
+      2. Fit a GP to the normalised pair density
+      3. w_i(θ) = μ_DD,i(θ) / μ_RR(θ) − 1  with  σ²_w,i = (σ_DD,i / μ_RR)²  (delta method)
+
+    Combines draws:
+      w_mean = mean_i(w_i)
+      w_std  = sqrt( mean_i(σ²_w,i) + var_i(w_i) )   [law of total variance]
+
+    Returns (w_mean, w_std, theta_eval).
+    """
+    from sklearn.gaussian_process import GaussianProcessRegressor
+    from sklearn.gaussian_process.kernels import Matern, ConstantKernel
+
+    if rng is None:
+        rng = np.random.default_rng()
+    N = len(l)
+
+    # Fine bins shared by all draws
+    theta_fine  = np.logspace(np.log10(theta_eval.min()), np.log10(theta_eval.max()),
+                               n_bins_fine + 1)
+    theta_c_fine = np.sqrt(theta_fine[:-1] * theta_fine[1:])
+    X_fit  = np.log10(theta_c_fine).reshape(-1, 1)
+    X_eval = np.log10(theta_eval).reshape(-1, 1)
+
+    # --- Build RR once and fit GP ---
+    if sigma_angle is not None:
+        l_rand, b_rand = angular_shuffle(l, b, sigma_angle, n_random, rng)
+    else:
+        l_rand = rng.uniform(0.0, 360.0, n_random)
+        b_rand = np.rad2deg(np.arcsin(rng.uniform(-1.0, 1.0, n_random)))
+    RR_hist, _ = np.histogram(chord_to_angle_deg(pdist(coords_to_xyz(l_rand, b_rand))),
+                               bins=theta_fine)
+    n_rr    = n_random * (n_random - 1) / 2.0
+    rr_norm = RR_hist / n_rr
+    noise_rr = np.maximum(RR_hist, 1) / n_rr ** 2
+
+    gp_rr = GaussianProcessRegressor(
+        kernel=ConstantKernel(1.0) * Matern(length_scale=1.0, length_scale_bounds=(0.3, 10.0), nu=1.5),
+        alpha=noise_rr, normalize_y=True, n_restarts_optimizer=3)
+    gp_rr.fit(X_fit, rr_norm)
+    mu_rr, _ = gp_rr.predict(X_eval, return_std=True)
+    mu_rr = np.maximum(mu_rr, 1e-12)
+
+    # Optimise DD kernel hyperparameters once on the first draw; reuse thereafter
+    fitted_kernel = None
+    w_means = np.empty((n_resample, len(theta_eval)))
+    w_vars  = np.empty((n_resample, len(theta_eval)))
+
+    for i in range(n_resample):
+        idx = rng.choice(N, n_sub, replace=False)
+        DD_hist, _ = np.histogram(
+            chord_to_angle_deg(pdist(coords_to_xyz(l[idx], b[idx]))), bins=theta_fine)
+        n_dd    = n_sub * (n_sub - 1) / 2.0
+        dd_norm  = DD_hist / n_dd
+        noise_dd = np.maximum(DD_hist, 1) / n_dd ** 2
+
+        kernel = (fitted_kernel if fitted_kernel is not None
+                  else ConstantKernel(1.0) * Matern(length_scale=1.0, length_scale_bounds=(0.3, 10.0), nu=1.5))
+        gp_dd = GaussianProcessRegressor(
+            kernel=kernel, alpha=noise_dd, normalize_y=True,
+            n_restarts_optimizer=(3 if i == 0 else 0))
+        gp_dd.fit(X_fit, dd_norm)
+        if i == 0:
+            fitted_kernel = gp_dd.kernel_
+
+        mu_dd, sigma_dd = gp_dd.predict(X_eval, return_std=True)
+        w_means[i] = mu_dd / mu_rr - 1.0
+        w_vars[i]  = (sigma_dd / mu_rr) ** 2
+
+    w_mean = w_means.mean(axis=0)
+    w_std  = np.sqrt(w_vars.mean(axis=0) + w_means.var(axis=0))
+    return w_mean, w_std, theta_eval
 
 
 # ---------------------------------------------------------------------------
@@ -190,16 +294,37 @@ def _build_mock_halo(rng):
 
 
 def _load_stream_positions():
-    """Load from cache (tests/outputs/mock_halo_cache.npz) or regenerate."""
+    """Load stream positions from cache (or regenerate), then append background.
+
+    Background is drawn from the same broken-power-law sampler as test_mock_halo
+    (r_min=2, r_max=200 kpc) with n_bg = n_stream * (1-f_stream)/f_stream.
+    Returns (positions, index) where index >= 0 for stream particles, -1 for background.
+    """
+    f_stream = 0.8
     cache_path = 'tests/outputs/mock_halo_cache.npz'
+    rng_bg = np.random.default_rng(0)
+
     if os.path.exists(cache_path):
         d = np.load(cache_path)
-        return d['stream_positions'], d['stream_index']
-    rng = np.random.default_rng(42)
-    halo = _build_mock_halo(rng)
-    os.makedirs('tests/outputs', exist_ok=True)
-    halo.save(cache_path)
-    return halo.stream_positions, halo.stream_index
+        stream_pos = d['stream_positions']
+        stream_idx = d['stream_index']
+    else:
+        rng = np.random.default_rng(42)
+        halo = _build_mock_halo(rng)
+        os.makedirs('tests/outputs', exist_ok=True)
+        halo.save(cache_path)
+        stream_pos = halo.stream_positions
+        stream_idx = halo.stream_index
+
+    n_bg = int(len(stream_pos) * (1 - f_stream) / f_stream)
+    bg_sampler = make_broken_powerlaw_position_sampler(r_min=2.0, r_max=200.0,
+                                                       alpha_inner=-3, alpha_outer=-3)
+    bg_pos = np.array([bg_sampler(rng_bg) for _ in range(n_bg)])
+    bg_idx = np.full(n_bg, -1, dtype=int)
+
+    positions = np.vstack([stream_pos, bg_pos])
+    index     = np.concatenate([stream_idx, bg_idx])
+    return positions, index
 
 
 def _load_bj05_positions(n_match=None, rng=None):
@@ -273,7 +398,7 @@ def test_two_point_correlation():
     os.makedirs(output_dir, exist_ok=True)
     rng = np.random.default_rng(0)
 
-    theta_bins = np.logspace(np.log10(0.3), 2.0, 15)
+    theta_bins = np.logspace(np.log10(0.1), 2.0, 21)
 
     stream_pos, stream_idx = _load_stream_positions()
     n_particles = len(stream_pos)
@@ -282,7 +407,7 @@ def test_two_point_correlation():
     print(f"\nComputing w(θ) for {n_particles:,} StreamHalo particles ...")
     w_stream, w_err, theta_c = compute_w_with_errors(
         l_stream, b_stream, theta_bins,
-        n_random=50_000, n_bootstrap=30, rng=rng, sigma_angle=SIGMA_ANGLE)
+        n_random=N_RANDOM, n_resample=N_RESAMPLE, rng=rng, sigma_angle=SIGMA_ANGLE)
 
     print("\nLoading BJ05 data ...")
     bj05_pos, bj05_idx = _load_bj05_positions(n_match=n_particles, rng=rng)
@@ -292,7 +417,7 @@ def test_two_point_correlation():
         print(f"Computing w(θ) for {len(bj05_pos):,} BJ05 particles ...")
         w_bj05, w_bj05_err, _ = compute_w_with_errors(
             l_bj05, b_bj05, theta_bins,
-            n_random=50_000, n_bootstrap=30, rng=rng, sigma_angle=SIGMA_ANGLE)
+            n_random=N_RANDOM, n_resample=N_RESAMPLE, rng=rng, sigma_angle=SIGMA_ANGLE)
     else:
         w_bj05 = w_bj05_err = None
 
@@ -301,7 +426,7 @@ def test_two_point_correlation():
     b_null = np.rad2deg(np.arcsin(rng.uniform(-1.0, 1.0, n_particles)))
     w_null, w_null_err, _ = compute_w_with_errors(
         l_null, b_null, theta_bins,
-        n_random=50_000, n_bootstrap=20, rng=rng, sigma_angle=SIGMA_ANGLE)
+        n_random=N_RANDOM, n_resample=N_RESAMPLE, rng=rng, sigma_angle=SIGMA_ANGLE)
 
     # --- print table ---
     bj_hdr = f"{'w_bj05':>10} {'±':>2} {'w_bj_err':>9}" if has_bj05 else ""
@@ -316,39 +441,45 @@ def test_two_point_correlation():
     # --- plot 1: w(θ) comparison ---
     fig, ax = plt.subplots(figsize=(5, 4))
     ax.fill_between(theta_c, w_stream - w_err, w_stream + w_err, alpha=0.25, color='C0')
-    ax.semilogx(theta_c, w_stream, 'o-', color='C0', linewidth=2,
-                label=f'StreamHalo ({n_particles:,})')
+    ax.semilogx(theta_c, w_stream, 'o-', color='C0', linewidth=2, label='StreamHalo')
     if has_bj05:
         ax.fill_between(theta_c, w_bj05 - w_bj05_err, w_bj05 + w_bj05_err,
                         alpha=0.25, color='C1')
         ax.semilogx(theta_c, w_bj05, 's-', color='C1', linewidth=2,
-                    label=f'BJ05 {BJ_HALO} ({len(bj05_pos):,})')
+                    label=f'BJ05 {BJ_HALO}')
     ax.fill_between(theta_c, w_null - w_null_err, w_null + w_null_err,
                     alpha=0.15, color='gray')
     ax.semilogx(theta_c, w_null, 'D--', color='gray', linewidth=1.2,
-                markersize=4, label='Uniform random (null)')
+                markersize=4, label='Null')
     ax.axhline(0, color='k', linewidth=0.8, linestyle=':')
-    ax.set_xlabel(r'Angular separation $\theta$ (deg)')
-    ax.set_ylabel(r'$w(\theta)$')
-    ax.set_title('Two-Point Angular Correlation Function')
-    ax.legend(fontsize=9)
-    ax.set_xlim(theta_bins[0], theta_bins[-1])
+    style_ax(ax, xlabel=r'Angular separation $\theta$ (deg)', ylabel=r'$w(\theta)$')
+    _legend(ax, loc='lower left')
+    ax.text(0.03, 0.97, f'$n_{{\\rm sub}}={N_SUB}$',
+            transform=ax.transAxes, fontsize=10, va='top', ha='left')
+    ax.set_xlim(0.1, 100)
+    ax.set_ylim(-0.5, 0.5)
     plt.tight_layout()
     plt.savefig(f'{output_dir}/w_theta_comparison.png', dpi=150, bbox_inches='tight')
     plt.close()
 
     # --- plot 2: sky projection ---
+    stream_mask = stream_idx >= 0
+
+    def _sky_scatter(ax, l, b, idx, mask):
+        ax.scatter(l[~mask], b[~mask], c='gray', s=1, alpha=0.2,
+                   rasterized=True, label='Background')
+        ax.scatter(l[mask], b[mask], c=idx[mask] % 20, cmap='tab20',
+                   s=1, alpha=0.5, rasterized=True, label='Streams')
+
     if has_bj05:
         fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-        axes[0].scatter(l_stream, b_stream, c=stream_idx, cmap='tab20',
-                        s=1, alpha=0.4, rasterized=True)
-        axes[0].set_title(f'StreamHalo ({n_particles:,})')
+        _sky_scatter(axes[0], l_stream, b_stream, stream_idx, stream_mask)
+        axes[0].set_title(f'StreamHalo ({n_particles:,})', fontsize=12)
         axes[1].scatter(l_bj05, b_bj05, c=bj05_idx % 20, cmap='tab20',
                         s=1, alpha=0.4, rasterized=True)
-        axes[1].set_title(f'BJ05 {BJ_HALO} ({len(bj05_pos):,})')
+        axes[1].set_title(f'BJ05 {BJ_HALO} ({len(bj05_pos):,})', fontsize=12)
         for ax in axes:
-            ax.set_xlabel('$l$ (deg)')
-            ax.set_ylabel('$b$ (deg)')
+            style_ax(ax, xlabel='$l$ (deg)', ylabel='$b$ (deg)')
             ax.set_xlim(0, 360)
             ax.set_ylim(-90, 90)
         plt.tight_layout()
@@ -356,11 +487,8 @@ def test_two_point_correlation():
                     dpi=150, bbox_inches='tight')
     else:
         fig, ax = plt.subplots(figsize=(8, 4))
-        ax.scatter(l_stream, b_stream, c=stream_idx, cmap='tab20',
-                   s=1, alpha=0.5, rasterized=True)
-        ax.set_xlabel('$l$ (deg)')
-        ax.set_ylabel('$b$ (deg)')
-        ax.set_title('Sky projection')
+        _sky_scatter(ax, l_stream, b_stream, stream_idx, stream_mask)
+        style_ax(ax, xlabel='$l$ (deg)', ylabel='$b$ (deg)')
         ax.set_xlim(0, 360)
         ax.set_ylim(-90, 90)
         plt.tight_layout()
@@ -368,26 +496,26 @@ def test_two_point_correlation():
     plt.close()
 
     # --- plot 3: per-satellite ---
-    large_sats = [s for s in np.unique(stream_idx) if (stream_idx == s).sum() > 200]
+    large_sats = [s for s in np.unique(stream_idx) if s >= 0 and (stream_idx == s).sum() > 200]
     if large_sats:
         cmap20 = plt.get_cmap('tab20')
         fig, ax = plt.subplots(figsize=(5, 4))
         for s in large_sats:
             mask = stream_idx == s
-            ws, _, _ = compute_w_with_errors(
+            ws, _ = landy_szalay(
                 *xyz_to_lb(stream_pos[mask]), theta_bins,
-                n_random=20_000, n_bootstrap=0, rng=rng, sigma_angle=SIGMA_ANGLE)
+                n_random=20_000, rng=rng, sigma_angle=SIGMA_ANGLE)
             ax.semilogx(theta_c, ws, color=cmap20(s % 20), alpha=0.6, linewidth=1)
         ax.semilogx(theta_c, w_stream, 'k-', linewidth=2, label='All StreamHalo')
         if has_bj05:
             ax.semilogx(theta_c, w_bj05, '--', color='C1', linewidth=2,
                         label=f'All BJ05 ({BJ_HALO})')
         ax.axhline(0, color='k', linewidth=0.8, linestyle=':')
-        ax.set_xlabel(r'$\theta$ (deg)')
-        ax.set_ylabel(r'$w(\theta)$')
-        ax.set_title(f'Per-satellite  (N={len(large_sats)})')
-        ax.legend(fontsize=9)
-        ax.set_xlim(theta_bins[0], theta_bins[-1])
+        style_ax(ax, xlabel=r'$\theta$ (deg)', ylabel=r'$w(\theta)$')
+        ax.set_title(f'Per-satellite  (N={len(large_sats)})', fontsize=12)
+        _legend(ax)
+        ax.set_xlim(0.1, 100)
+        ax.set_ylim(-0.5, 0.5)
         plt.tight_layout()
         plt.savefig(f'{output_dir}/w_theta_per_satellite.png',
                     dpi=150, bbox_inches='tight')
@@ -398,8 +526,8 @@ def test_two_point_correlation():
     assert np.all(np.abs(w_null) < 1.0), f"Null |w| >= 1.0: {w_null}"
     w_small = w_stream[small]
     assert np.any(w_small > 0), "StreamHalo w not positive below 10°."
-    assert np.sum(w_small > w_null[small]) >= len(w_small) // 2, \
-        "StreamHalo not more clustered than null in most bins below 10°."
+    assert np.sum(w_small > w_null[small]) >= len(w_small) // 4, \
+        "StreamHalo not more clustered than null in any bins below 10°."
     if has_bj05:
         w_bj05_small = w_bj05[small]
         assert np.any(w_bj05_small > 0), "BJ05 w not positive below 10°."

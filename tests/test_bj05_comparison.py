@@ -1,15 +1,20 @@
 """Compare StreamHalo radial profile against Bullock & Johnston 2005 via Galaxia N-body data."""
 
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
+from tests.plot_style import apply_style, style_ax, legend as _legend
+apply_style()
+
 from streamhalo.potentials import v_esc as _v_esc
 
 GALAXIA_DATA = '/Users/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
-BJ_HALO = 'halo08'
+BJ_HALO = 'halo02'
 R_HALF_MAX = 10.0  # kpc — exclude progenitors whose stream half-mass radius is below this
 R_GC_MIN   = 10.0  # kpc — exclude progenitors whose CM is closer than this to the GC
 
@@ -150,10 +155,10 @@ def test_bj05_comparison():
                        s=2, alpha=0.6, color=cmap(prog % 20), rasterized=True)
             ax.annotate(f'{prog}', xy=(r_cm[0], r_cm[1]),
                         fontsize=6, color=cmap(prog % 20), ha='center')
-        ax.set_xlabel('$x$ (kpc)');  ax.set_ylabel('$y$ (kpc)')
+        style_ax(ax, xlabel='$x$ (kpc)', ylabel='$y$ (kpc)')
         ax.set_xlim(-100, 100);  ax.set_ylim(-100, 100);  ax.set_aspect('equal')
         ax.set_title(f'BJ05 {BJ_HALO}: short streams '
-                     f'($r_{{1/2}} < {R_HALF_MAX}$ kpc, $N={len(short_indices)}$)')
+                     f'($r_{{1/2}} < {R_HALF_MAX}$ kpc, $N={len(short_indices)}$)', fontsize=12)
         plt.tight_layout()
         plt.savefig(f'{output_dir}/bj05_short_streams_xy.png', dpi=150, bbox_inches='tight')
         plt.close()
@@ -227,98 +232,51 @@ def test_bj05_comparison():
     bj_centers, bj_density = radial_profile(bj_show, r_min, r_max)
     sh_centers, sh_density = radial_profile(stream_positions, r_min, r_max)
 
-    # --- Plot ---
+    # --- Radial profile plot ---
     fig, ax = plt.subplots(figsize=(4, 3))
-
     ax.plot(bj_centers, bj_density, linewidth=2, color='C1', label=f'BJ05 ({BJ_HALO})')
-    ax.plot(sh_centers, sh_density, linewidth=2, color='C0', label=f'StreamHalo')
-
-    ax.set_xlabel('Radius (kpc)')
-    ax.set_ylabel(r'$dN/d\log r$')
+    ax.plot(sh_centers, sh_density, linewidth=2, color='C0', label='StreamHalo')
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlim(r_min, r_max)
-    ax.legend(loc='lower left')
-    ax.text(0.95, 0.95,
-            f'BJ05: {n_show:,} particles\nStreamHalo: {len(stream_positions):,} particles',
-            transform=ax.transAxes, verticalalignment='top', horizontalalignment='right',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5), fontsize=8)
-
+    style_ax(ax, xlabel='Radius (kpc)', ylabel=r'$dN/d\log r$')
+    _legend(ax, loc='lower left')
+    ax.text(0.97, 0.97,
+            f'BJ05: {n_show:,}\nStreamHalo: {len(stream_positions):,}',
+            transform=ax.transAxes, va='top', ha='right', fontsize=10)
     plt.tight_layout()
     plt.savefig(f'{output_dir}/radial_comparison.png', dpi=150, bbox_inches='tight')
     plt.close()
 
-    # --- XY projection comparison ---
+    # --- Projection plots (shared helper) ---
     proj = 200.0
-
     cmap = plt.get_cmap('tab20')
 
-    fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+    def _plot_projection(fname, coord_y, ylabel):
+        fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+        for prog in np.unique(bj_index_show):
+            mask = bj_index_show == prog
+            axes[0].scatter(bj_show[mask, 0], bj_show[mask, coord_y],
+                            s=1, alpha=0.5, color=cmap(prog % 20), rasterized=True)
+        axes[0].text(0.97, 0.97, f'$N = {n_show:,}$',
+                     transform=axes[0].transAxes, va='top', ha='right', fontsize=10)
+        for prog in np.unique(stream_index):
+            mask = stream_index == prog
+            axes[1].scatter(stream_positions[mask, 0], stream_positions[mask, coord_y],
+                            s=1, alpha=0.5, color=cmap(prog % 20), rasterized=True)
+        axes[1].text(0.97, 0.97, f'$N = {len(stream_positions):,}$',
+                     transform=axes[1].transAxes, va='top', ha='right', fontsize=10)
+        for i, (ax, title) in enumerate(zip(axes, [f'BJ05 ({BJ_HALO})', 'StreamHalo'])):
+            ax.set_xlim(-proj, proj); ax.set_ylim(-proj, proj); ax.set_aspect('equal')
+            style_ax(ax, xlabel='$x$ (kpc)')
+            ax.set_title(title, fontsize=12)
+        axes[0].set_ylabel(ylabel, fontsize=14)
+        plt.tight_layout()
+        plt.savefig(f'{output_dir}/{fname}', dpi=150, bbox_inches='tight')
+        plt.close()
 
-    for prog in np.unique(bj_index_show):
-        mask = bj_index_show == prog
-        axes[0].scatter(bj_show[mask, 0], bj_show[mask, 1],
-                        s=1, alpha=0.5, color=cmap(prog % 20), rasterized=True)
-    axes[0].set_title(f'BJ05 ({BJ_HALO})')
-    axes[0].text(0.95, 0.95, f'$N = {n_show:,}$',
-                 transform=axes[0].transAxes, verticalalignment='top',
-                 horizontalalignment='right',
-                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5), fontsize=9)
-
-    for prog in np.unique(stream_index):
-        mask = stream_index == prog
-        axes[1].scatter(stream_positions[mask, 0], stream_positions[mask, 1],
-                        s=1, alpha=0.5, color=cmap(prog % 20), rasterized=True)
-    axes[1].set_title('StreamHalo')
-    axes[1].text(0.95, 0.95, f'$N = {len(stream_positions):,}$',
-                 transform=axes[1].transAxes, verticalalignment='top',
-                 horizontalalignment='right',
-                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5), fontsize=9)
-
-    for ax in axes:
-        ax.set_xlim(-proj, proj)
-        ax.set_ylim(-proj, proj)
-        ax.set_aspect('equal')
-        ax.set_xlabel('$x$ (kpc)')
-
-    axes[0].set_ylabel('$y$ (kpc)')
-    plt.tight_layout()
-    plt.savefig(f'{output_dir}/xy_projection_comparison.png', dpi=150, bbox_inches='tight')
-    plt.close()
-
-    # --- XZ projection comparison ---
-    fig, axes = plt.subplots(1, 2, figsize=(8, 4))
-
-    for prog in np.unique(bj_index_show):
-        mask = bj_index_show == prog
-        axes[0].scatter(bj_show[mask, 0], bj_show[mask, 2],
-                        s=1, alpha=0.5, color=cmap(prog % 20), rasterized=True)
-    axes[0].set_title(f'BJ05 ({BJ_HALO})')
-    axes[0].text(0.95, 0.95, f'$N = {n_show:,}$',
-                 transform=axes[0].transAxes, verticalalignment='top',
-                 horizontalalignment='right',
-                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5), fontsize=9)
-
-    for prog in np.unique(stream_index):
-        mask = stream_index == prog
-        axes[1].scatter(stream_positions[mask, 0], stream_positions[mask, 2],
-                        s=1, alpha=0.5, color=cmap(prog % 20), rasterized=True)
-    axes[1].set_title('StreamHalo')
-    axes[1].text(0.95, 0.95, f'$N = {len(stream_positions):,}$',
-                 transform=axes[1].transAxes, verticalalignment='top',
-                 horizontalalignment='right',
-                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5), fontsize=9)
-
-    for ax in axes:
-        ax.set_xlim(-proj, proj)
-        ax.set_ylim(-proj, proj)
-        ax.set_aspect('equal')
-        ax.set_xlabel('$x$ (kpc)')
-
-    axes[0].set_ylabel('$z$ (kpc)')
-    plt.tight_layout()
-    plt.savefig(f'{output_dir}/xz_projection_comparison.png', dpi=150, bbox_inches='tight')
-    plt.close()
+    _plot_projection('xy_projection_comparison.png', 1, '$y$ (kpc)')
+    _plot_projection('xz_projection_comparison.png', 2, '$z$ (kpc)')
 
     # --- Satellite mass function comparison ---
     active_idx = np.unique(stream_index[stream_index >= 0])
@@ -343,11 +301,10 @@ def test_bj05_comparison():
             color='C0', label=f'StreamHalo stellar ({len(sh_stellar_active)} sats)')
     ax.step(bin_centers, dndlogm(sh_halo_active, mass_bins), where='mid', linewidth=2,
             color='C0', linestyle='--', label=f'StreamHalo halo ({len(sh_halo_active)} sats)')
-    ax.set_xlabel(r'Mass ($M_\odot$)')
-    ax.set_ylabel(r'$dN/d\log M$')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    ax.legend(loc='upper right', fontsize=8)
+    style_ax(ax, xlabel=r'Mass ($M_\odot$)', ylabel=r'$dN/d\log M$')
+    _legend(ax, loc='upper right')
     plt.tight_layout()
     plt.savefig(f'{output_dir}/mass_function_comparison.png', dpi=150, bbox_inches='tight')
     plt.close()
@@ -359,11 +316,10 @@ def test_bj05_comparison():
 
     fig, ax = plt.subplots(figsize=(4, 3))
     ax.scatter(bj_sat_total, bj_sat_median_m, s=20, alpha=0.8, color='C1')
-    ax.set_xlabel(r'Satellite total mass ($M_\odot$)')
-    ax.set_ylabel(r'Median particle mass ($M_\odot$)')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    ax.set_title(f'BJ05 ({BJ_HALO}) — {len(bj_progs_unique)} satellites')
+    style_ax(ax, xlabel=r'Satellite total mass ($M_\odot$)', ylabel=r'Median particle mass ($M_\odot$)')
+    ax.set_title(f'BJ05 ({BJ_HALO}) — {len(bj_progs_unique)} satellites', fontsize=12)
     plt.tight_layout()
     plt.savefig(f'{output_dir}/bj05_sat_vs_particle_mass.png', dpi=150, bbox_inches='tight')
     plt.close()
@@ -382,9 +338,8 @@ def test_bj05_comparison():
         mask = bj_index_show == prog
         axes[0].scatter(bj_Lz[mask], bj_E[mask],
                         s=1, alpha=0.4, color=cmap(prog % 20), rasterized=True)
-    axes[0].set_title(f'BJ05 ({BJ_HALO})')
-    axes[0].set_xlabel(r'$L_z$ (kpc km/s)')
-    axes[0].set_ylabel(r'$E$ (km/s)$^2$')
+    axes[0].set_title(f'BJ05 ({BJ_HALO})', fontsize=12)
+    style_ax(axes[0], xlabel=r'$L_z$ (kpc km/s)', ylabel=r'$E$ (km/s)$^2$')
     axes[0].set_xlim(-Lz_lim, Lz_lim)
     axes[0].set_ylim(E_min, 0)
 
@@ -392,8 +347,8 @@ def test_bj05_comparison():
         mask = stream_index == prog
         axes[1].scatter(sh_Lz[mask], sh_E[mask],
                         s=1, alpha=0.4, color=cmap(prog % 20), rasterized=True)
-    axes[1].set_title('StreamHalo')
-    axes[1].set_xlabel(r'$L_z$ (kpc km/s)')
+    axes[1].set_title('StreamHalo', fontsize=12)
+    style_ax(axes[1], xlabel=r'$L_z$ (kpc km/s)')
     axes[1].set_xlim(-Lz_lim, Lz_lim)
 
     plt.tight_layout()
@@ -416,24 +371,23 @@ def test_bj05_comparison():
         axes[0].scatter(bj_r_show[mask], bj_v_show[mask],
                         s=1, alpha=0.4, color=cmap(prog % 20), rasterized=True)
     axes[0].plot(r_curve, v_esc_curve, 'k--', linewidth=1.5, label=r'$v_{\rm esc}$')
-    axes[0].set_title(f'BJ05 ({BJ_HALO})')
-    axes[0].set_xlabel('Galactocentric distance (kpc)')
-    axes[0].set_ylabel(r'$|V|$ (km/s)')
+    axes[0].set_title(f'BJ05 ({BJ_HALO})', fontsize=12)
+    style_ax(axes[0], xlabel='Galactocentric distance (kpc)', ylabel=r'$|V|$ (km/s)')
     axes[0].set_xscale('log')
     axes[0].set_xlim(1e0, 1e3)
     axes[0].set_ylim(0, 700)
-    axes[0].legend(fontsize=8)
+    _legend(axes[0])
 
     for prog in np.unique(stream_index):
         mask = stream_index == prog
         axes[1].scatter(sh_r[mask], sh_v[mask],
                         s=1, alpha=0.4, color=cmap(prog % 20), rasterized=True)
     axes[1].plot(r_curve, v_esc_curve, 'k--', linewidth=1.5, label=r'$v_{\rm esc}$')
-    axes[1].set_title('StreamHalo')
-    axes[1].set_xlabel('Galactocentric distance (kpc)')
+    axes[1].set_title('StreamHalo', fontsize=12)
+    style_ax(axes[1], xlabel='Galactocentric distance (kpc)')
     axes[1].set_xscale('log')
     axes[1].set_xlim(1e0, 1e3)
-    axes[1].legend(fontsize=8)
+    _legend(axes[1])
 
     plt.tight_layout()
     plt.savefig(f'{output_dir}/speed_vs_radius_comparison.png', dpi=150, bbox_inches='tight')
@@ -450,9 +404,8 @@ def test_bj05_comparison():
         axes[0].scatter(bj_r_show[mask], bj_Vr[mask],
                         s=1, alpha=0.4, color=cmap(prog % 20), rasterized=True)
     axes[0].axhline(0, color='k', linewidth=0.8, linestyle='--')
-    axes[0].set_title(f'BJ05 ({BJ_HALO})')
-    axes[0].set_xlabel('Galactocentric distance (kpc)')
-    axes[0].set_ylabel(r'$V_r$ (km/s)')
+    axes[0].set_title(f'BJ05 ({BJ_HALO})', fontsize=12)
+    style_ax(axes[0], xlabel='Galactocentric distance (kpc)', ylabel=r'$V_r$ (km/s)')
     axes[0].set_xlim(0, 250)
     axes[0].set_ylim(-600, 600)
 
@@ -461,8 +414,8 @@ def test_bj05_comparison():
         axes[1].scatter(sh_r[mask], sh_Vr[mask],
                         s=1, alpha=0.4, color=cmap(prog % 20), rasterized=True)
     axes[1].axhline(0, color='k', linewidth=0.8, linestyle='--')
-    axes[1].set_title('StreamHalo')
-    axes[1].set_xlabel('Galactocentric distance (kpc)')
+    axes[1].set_title('StreamHalo', fontsize=12)
+    style_ax(axes[1], xlabel='Galactocentric distance (kpc)')
     axes[1].set_xlim(0, 250)
     axes[1].set_ylim(-600, 600)
 

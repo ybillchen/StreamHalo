@@ -4,12 +4,18 @@
 import dataclasses
 import json
 import os
+import sys
 import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
 import matplotlib.pyplot as plt
 import numpy as np
+
+from tests.plot_style import apply_style, style_ax, legend as _legend
+apply_style()
 
 from streamhalo import MockHalo
 from streamhalo.potentials import tidal_radius
@@ -234,15 +240,13 @@ def test_mock_halo_generation(cfg: MockHaloConfig = None):
     xs, ys = dndlogm(stellar_masses, np.logspace(np.log10(stellar_masses.min()), np.log10(stellar_masses.max()), 30))
     ax.step(xh, yh, where='mid', linewidth=2, color='C0', label='Halo mass')
     ax.step(xs, ys, where='mid', linewidth=2, color='C1', label='Stellar mass (Behroozi+13)')
-    ax.set_xlabel(r'Mass ($M_\odot$)')
-    ax.set_ylabel(r'$dN/d\log M$')
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlim(stellar_masses.min(), halo_masses.max())
-    ax.legend(loc='upper right', fontsize=8)
+    style_ax(ax, xlabel=r'Mass ($M_\odot$)', ylabel=r'$dN/d\log M$')
+    _legend(ax, loc='upper right')
     ax.text(0.05, 0.05, f'$N_{{\\rm sat}}={n_satellites}$\n$\\alpha={halo.satellites.alpha}$',
-            transform=ax.transAxes, verticalalignment='bottom',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5), fontsize=9)
+            transform=ax.transAxes, verticalalignment='bottom', fontsize=10)
     plt.tight_layout()
     plt.savefig(f'{output_dir}/mock_halo_mass_distribution.png', dpi=150, bbox_inches='tight')
     plt.close()
@@ -254,12 +258,11 @@ def test_mock_halo_generation(cfg: MockHaloConfig = None):
     ax.scatter(combined_pos[stream_mask, 0], combined_pos[stream_mask, 1],
                c=combined_idx[stream_mask], cmap='tab20', s=1, alpha=0.6,
                label=f'Streams ({n_stream_actual:,})')
-    ax.set_xlabel('X (kpc)')
-    ax.set_ylabel('Y (kpc)')
     ax.set_xlim(-cfg.projection_range, cfg.projection_range)
     ax.set_ylim(-cfg.projection_range, cfg.projection_range)
     ax.set_aspect('equal')
-    ax.legend(loc='lower right')
+    style_ax(ax, xlabel='$x$ (kpc)', ylabel='$y$ (kpc)')
+    _legend(ax, loc='lower right')
     plt.tight_layout()
     plt.savefig(f'{output_dir}/mock_halo_xy_projection.png', dpi=150, bbox_inches='tight')
     plt.close()
@@ -271,12 +274,11 @@ def test_mock_halo_generation(cfg: MockHaloConfig = None):
     _,  yr_bg     = dndlogm(radii[~stream_mask], r_bins)
     ax.step(xr, yr_stream, where='mid', linewidth=2, label=f'Streams ({n_stream_actual:,})', color='C0')
     ax.step(xr, yr_bg,     where='mid', linewidth=2, label=f'Background ({n_bg_actual:,})', color='gray')
-    ax.set_xlabel('Radius (kpc)')
-    ax.set_ylabel(r'$dN/d\log r$')
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlim(10.0, 1000.0)
-    ax.legend(loc='lower left')
+    style_ax(ax, xlabel='Radius (kpc)', ylabel=r'$dN/d\log r$')
+    _legend(ax, loc='lower left')
     plt.tight_layout()
     plt.savefig(f'{output_dir}/mock_halo_radial_distribution.png', dpi=150, bbox_inches='tight')
     plt.close()

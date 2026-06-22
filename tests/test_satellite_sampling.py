@@ -2,9 +2,14 @@
 """Satellite mass-function sampling test."""
 
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+from tests.plot_style import apply_style, style_ax, legend as _legend
+apply_style()
 
 from streamhalo.satellites import SatellitePopulation
 
@@ -53,11 +58,10 @@ def test_satellite_sampling():
     correlation = np.corrcoef(density_h, expected_at_bins)[0, 1]
     assert correlation > 0.8, f"Power-law distribution mismatch: correlation = {correlation:.3f}"
 
-    ax.set_xlabel(r'Mass ($M_\odot$)')
-    ax.set_ylabel(r'$dN/d\log M$')
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlim(stellar_masses_sample.min(), sat_pop.M_max)
+    style_ax(ax, xlabel=r'Mass ($M_\odot$)', ylabel=r'$dN/d\log M$')
 
     mean_log = np.log10(large_sample.mean())
     median_log = np.log10(np.median(large_sample))
@@ -65,9 +69,8 @@ def test_satellite_sampling():
                  f'$\\langle M_h \\rangle = 10^{{{mean_log:.1f}}}$\n'
                  f'Median $M_h = 10^{{{median_log:.1f}}}$\n'
                  f'$N_{{\\rm sat}}={len(large_sample)}$')
-    ax.text(0.05, 0.05, info_text, transform=ax.transAxes, verticalalignment='bottom',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5), fontsize=9)
-    ax.legend(loc='upper right', fontsize=8)
+    ax.text(0.05, 0.05, info_text, transform=ax.transAxes, va='bottom', fontsize=10)
+    _legend(ax, loc='upper right')
 
     plt.tight_layout()
     plt.savefig(f'{output_dir}/satellite_mass_function.png', dpi=150, bbox_inches='tight')

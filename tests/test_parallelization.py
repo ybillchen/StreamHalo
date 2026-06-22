@@ -2,6 +2,8 @@
 """JAX parallelization test."""
 
 import multiprocessing
+import os
+import sys
 import threading
 import time
 
@@ -10,6 +12,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import psutil
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from tests.plot_style import apply_style, style_ax, legend as _legend
+apply_style()
 
 try:
     import pynvml
@@ -155,15 +161,12 @@ def _make_cpu_plot(res, np_vals, cpu_count, output_dir):
             f"$n_{{\\rm particles}} = {mantissa} \\times 10^{{{exponent}}}$\n"
             f"Duration: {data['wall_time']:.2f} s"
         )
-        ax.text(0.95, 0.92, info_text, transform=ax.transAxes, verticalalignment='top',
-                horizontalalignment='right',
-                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5), fontsize=9)
-
-        ax.set_ylabel('CPU Usage (%)')
+        ax.text(0.95, 0.92, info_text, transform=ax.transAxes, va='top', ha='right', fontsize=10)
+        style_ax(ax, ylabel='CPU Usage (%)')
         ax.set_xlim(left=0, right=max_time)
         ax.set_ylim(bottom=0, top=y_max)
 
-    axes[-1].set_xlabel('Time (s)')
+    axes[-1].set_xlabel('Time (s)', fontsize=14)
     plt.tight_layout()
     plt.savefig(output_dir / 'parallelization_results_comparison.png', dpi=150, bbox_inches='tight')
     plt.close()
@@ -193,17 +196,14 @@ def _make_gpu_plot(res, np_vals, output_dir):
             f"$n_{{\\rm particles}} = {mantissa} \\times 10^{{{exponent}}}$\n"
             f"Duration: {data['wall_time']:.2f} s"
         )
-        ax.text(0.95, 0.92, info_text, transform=ax.transAxes, verticalalignment='top',
-                horizontalalignment='right',
-                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5), fontsize=9)
-
-        ax.set_ylabel('GPU Usage (%)')
+        ax.text(0.95, 0.92, info_text, transform=ax.transAxes, va='top', ha='right', fontsize=10)
+        style_ax(ax, ylabel='GPU Usage (%)')
         ax.set_xlim(left=0, right=max_time)
         ax.set_ylim(bottom=0, top=105)
         if i == 0:
-            ax.legend(fontsize=8, loc='upper left')
+            _legend(ax, loc='upper left')
 
-    axes[-1].set_xlabel('Time (s)')
+    axes[-1].set_xlabel('Time (s)', fontsize=14)
     plt.tight_layout()
     plt.savefig(output_dir / 'parallelization_gpu_comparison.png', dpi=150, bbox_inches='tight')
     plt.close()

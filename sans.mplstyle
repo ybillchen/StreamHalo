@@ -1,0 +1,21 @@
+font.family        : sans-serif
+font.sans-serif    : Noto Sans, Helvetica, Liberation Sans, DejaVu Sans
+mathtext.fontset   : custom
+mathtext.default   : it
+mathtext.rm        : Noto Sans
+mathtext.it        : Noto Sans:italic
+mathtext.bf        : Noto Sans:bold
+mathtext.sf        : Noto Sans
+mathtext.cal       : Noto Sans
+mathtext.fallback  : stixsans
+
+xtick.direction    : in
+ytick.direction    : in
+xtick.top          : True
+xtick.bottom       : True
+ytick.left         : True
+ytick.right        : True
+xtick.minor.visible: True
+ytick.minor.visible: True
+
+lines.dashed_pattern : 2, 1

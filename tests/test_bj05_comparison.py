@@ -13,7 +13,12 @@ apply_style()
 
 from streamhalo.potentials import v_esc as _v_esc
 
-GALAXIA_DATA = '/Users/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
+_GALAXIA_CANDIDATES = [
+    '/home/ybchen/Downloads/galaxia-0.7.2/GalaxiaData',   # Linux
+    '/Users/ybchen/Downloads/galaxia-0.7.2/GalaxiaData',  # macOS
+]
+GALAXIA_DATA = next((p for p in _GALAXIA_CANDIDATES if os.path.isdir(p)),
+                    _GALAXIA_CANDIDATES[0])
 BJ_HALO = 'halo02'
 R_HALF_MAX = 10.0  # kpc — exclude progenitors whose stream half-mass radius is below this
 R_GC_MIN   = 10.0  # kpc — exclude progenitors whose CM is closer than this to the GC

@@ -22,7 +22,12 @@ from streamhalo.sampling import (
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-GALAXIA_DATA = '/Users/ybchen/Downloads/galaxia-0.7.2/GalaxiaData'
+_GALAXIA_CANDIDATES = [
+    '/home/ybchen/Downloads/galaxia-0.7.2/GalaxiaData',   # Linux
+    '/Users/ybchen/Downloads/galaxia-0.7.2/GalaxiaData',  # macOS
+]
+GALAXIA_DATA = next((p for p in _GALAXIA_CANDIDATES if os.path.isdir(p)),
+                    _GALAXIA_CANDIDATES[0])
 BJ_HALO      = 'halo02'
 R_HALF_MAX   = 10.0  # kpc — exclude progenitors whose stream half-mass radius is below this
 R_GC_MIN     = 10.0  # kpc — exclude progenitors whose CM is closer than this to the GC
@@ -146,6 +151,7 @@ def compute_w_with_errors(l, b, theta_bins, n_random=10_000,
         rng = np.random.default_rng()
 
     N = len(l)
+    n_sub   = min(n_sub, N)
     theta_c = np.sqrt(theta_bins[:-1] * theta_bins[1:])
 
     if n_resample < 2:

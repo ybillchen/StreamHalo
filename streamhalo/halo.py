@@ -1,5 +1,6 @@
 """Mock stellar halo orchestrator: satellites → streams → background."""
 
+import math
 import numpy as np
 
 from .potentials import v_esc
@@ -113,7 +114,7 @@ class MockHalo:
             r_sat = float(np.linalg.norm(self.satellite_positions[i]))
             halo_mass = float(self.satellite_halo_masses[i])
             Rs = float(scale_fn(r_sat, halo_mass))
-            n_gen = n_steps * max(1, n_target // n_steps)
+            n_gen = n_steps * max(1, math.ceil(n_target / n_steps))
 
             _, _, xv_stream, _ = self.stream_gen.generate_stream(
                 np.hstack([self.satellite_positions[i], self.satellite_velocities[i]]),
@@ -125,7 +126,10 @@ class MockHalo:
                 n_particles=n_gen,
             )
 
-            pos, vel = xv_stream[:, :3], xv_stream[:, 3:]
+            # Convert to numpy immediately so GPU memory is freed before the next satellite.
+            pos = np.asarray(xv_stream[:, :3])
+            vel = np.asarray(xv_stream[:, 3:])
+
             if n_target < len(pos):
                 idx = self.rng.choice(len(pos), n_target, replace=False)
                 pos, vel = pos[idx], vel[idx]

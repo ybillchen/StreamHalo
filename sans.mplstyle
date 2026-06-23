@@ -1,5 +1,5 @@
 font.family        : sans-serif
-font.sans-serif    : Noto Sans, Helvetica, Liberation Sans, DejaVu Sans
+font.sans-serif    : Noto Sans, Noto Sans Math, Helvetica, Liberation Sans, DejaVu Sans
 mathtext.fontset   : custom
 mathtext.default   : it
 mathtext.rm        : Noto Sans
@@ -8,6 +8,8 @@ mathtext.bf        : Noto Sans:bold
 mathtext.sf        : Noto Sans
 mathtext.cal       : Noto Sans
 mathtext.fallback  : stixsans
+
+axes.unicode_minus : False
 
 xtick.direction    : in
 ytick.direction    : in

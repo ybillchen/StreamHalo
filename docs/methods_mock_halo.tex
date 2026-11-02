@@ -1,0 +1,193 @@
+% Methods section: construction of mock stellar halos with StreamHalo.
+% AASTeX (aastex631) conventions; paste into the main manuscript.
+
+\section{Mock Stellar Halos} \label{sec:mock}
+
+We construct mock stellar halos by populating a Milky Way--like host potential with a
+statistical sample of accreted satellites, disrupting each satellite into a tidal stream with
+a particle-spray model, and embedding the resulting streams in a smooth, phase-mixed
+background. The procedure is implemented in the \texttt{StreamHalo} package, which uses
+the JAX-accelerated particle-spray code \texttt{StreaMAX} to generate the streams. Each step
+is described below, and the fiducial parameters are listed in Table~\ref{tab:mock_params}.
+
+\subsection{Host Potential} \label{sec:mock_host}
+
+The host galaxy is a static, axisymmetric potential with four components: a
+\citet{Miyamoto1975} stellar disk, \citet{Hernquist1990} bulge and nucleus components, and a
+spherical \citet*[NFW;][]{Navarro1997} dark matter halo. All components share a common center
+and their symmetry axis lies along $\hat{z}$. The component masses and scale lengths
+(Table~\ref{tab:mock_params}) follow a standard Milky Way mass model. The same potential is
+used to assign satellite velocities (Section~\ref{sec:mock_phase}), to compute tidal radii
+(Section~\ref{sec:mock_streams}), and to integrate orbits.
+
+\subsection{Satellite Population} \label{sec:mock_sats}
+
+Satellite (sub)halo masses $M_h$ are drawn independently from a power-law mass function,
+\begin{equation}
+    \frac{dN}{dM_h} \propto M_h^{\,\alpha}, \qquad M_{\rm min} \le M_h \le M_{\rm max},
+    \label{eq:hmf}
+\end{equation}
+by inverse-transform sampling, with a fiducial slope $\alpha = -1.9$, consistent with the
+subhalo mass functions found in cosmological simulations \citep[e.g.,][]{Springel2008}.
+Each halo mass is converted to a stellar mass $M_\star$ with the $z=0$ stellar-to-halo mass
+relation of \citet[][their Equation~3]{Behroozi2013},
+\begin{equation}
+    \log_{10} M_\star = \log_{10}(\epsilon M_1) + f\!\left[\log_{10}(M_h/M_1)\right] - f(0),
+\end{equation}
+\begin{equation}
+    f(x) = -\log_{10}\!\left(10^{\alpha_B x} + 1\right)
+           + \delta\,\frac{\left[\log_{10}(1 + e^{x})\right]^{\gamma}}{1 + \exp(10^{-x})},
+\end{equation}
+with $\log_{10}(M_1/M_\odot) = 11.514$, $\log_{10}\epsilon = -1.777$, $\alpha_B = -1.412$,
+$\delta = 3.508$, and $\gamma = 0.316$.
+
+The number of satellites is not fixed in advance. We draw satellites one at a time until
+their cumulative stellar mass first exceeds a target $M_{\star,\rm tot}$, which sets the
+total accreted stellar mass of the halo. With the fiducial parameters
+($M_{\star,\rm tot} = 10^{9}\,M_\odot$), a typical realization contains
+$\sim\!1.6\times10^{4}$ satellites. Most of the stellar mass is in the few most massive
+satellites, which have $M_\star \sim 10^{7}$--$10^{8}\,M_\odot$.
+
+\subsection{Satellite Phase-space Coordinates} \label{sec:mock_phase}
+
+Satellites are placed at galactocentric radii drawn from a broken power-law number-density
+profile,
+\begin{equation}
+    n(r) \propto
+    \begin{cases}
+        r^{\,\beta_{\rm in}},  & r_{\rm min} \le r < r_{\rm br}, \\
+        r_{\rm br}^{\,\beta_{\rm in}-\beta_{\rm out}}\, r^{\,\beta_{\rm out}},
+                               & r_{\rm br} \le r \le r_{\rm max},
+    \end{cases}
+    \label{eq:nr}
+\end{equation}
+which is continuous at $r_{\rm br}$. We sample it by analytically inverting the cumulative
+distribution of $dN/dr = 4\pi r^2 n(r)$. In the fiducial model,
+$\beta_{\rm in} = \beta_{\rm out} = -3$ and $r_{\rm br} = r_{\rm max}$, so the profile is a
+single $r^{-3}$ power law between 2 and 100\,kpc, roughly matching the density profile of
+the Galactic stellar halo \citep[e.g.,][]{Deason2011}. Angular positions are isotropic on the
+sphere.
+
+Satellite velocities are isotropic in direction. Their speeds are drawn uniformly from
+$[0, v_{\rm esc}(r)]$, where
+\begin{equation}
+    v_{\rm esc}(r) = \sqrt{2\left[\Phi_{\rm host}(r_{\rm vir}) - \Phi_{\rm host}(r)\right]}
+\end{equation}
+is the escape speed relative to a virial radius $r_{\rm vir} = 200$\,kpc. Every satellite is
+therefore bound to the host. This prescription deliberately does not assume an equilibrium
+distribution function. It spans a wide range of orbital energies and eccentricities, so the
+streams have a variety of morphologies, from thin, coherent streams to shell-like and
+phase-mixed debris. As an alternative, \texttt{StreamHalo} can also draw speeds from the
+isotropic \citet{Hernquist1990} distribution function.
+
+The sampled coordinates $(\mathbf{x}_i, \mathbf{v}_i)$ are the \emph{present-day}
+($t = 0$) phase-space coordinates of each progenitor.
+
+\subsection{Tidal Stream Generation} \label{sec:mock_streams}
+
+\paragraph{Particle budget.}
+We assign a total of $N_{\rm stream}$ stream particles to the satellites in proportion to
+stellar mass,
+\begin{equation}
+    N_i = \mathrm{round}\!\left(N_{\rm stream}\,
+          \frac{M_{\star,i}}{\sum_j M_{\star,j}}\right),
+\end{equation}
+so that each stream particle represents approximately the same amount of stellar mass. We
+skip satellites with $N_i < N_{\rm min} = 100$. These faint systems would contribute
+negligible light and could not be resolved as streams. Because the stellar mass is dominated
+by the most massive satellites, only a small fraction of the population is retained. In the
+fiducial realization, 75 satellites with $M_\star \gtrsim 2\times10^{6}\,M_\odot$ produce
+streams, containing $\approx 4\times10^{4}$ particles in total.
+
+\paragraph{Progenitor model.}
+Each progenitor is modeled as a Plummer sphere with initial mass $M_h$. Its scale radius is
+tied to the tidal field at the progenitor's present-day radius $r_i = |\mathbf{x}_i|$,
+\begin{equation}
+    a_{{\rm P},i} = \eta\, r_{t,i}, \qquad
+    r_{t,i} = r_i \left[\frac{M_{h,i}}{3\,M_{\rm NFW}(<r_i)}\right]^{1/3},
+    \label{eq:plummer}
+\end{equation}
+where $r_t$ is the \citet{King1962} tidal radius, $M_{\rm NFW}(<r)$ is the enclosed mass of
+the NFW component (concentration $c = r_{\rm vir}/R_s$), and $\eta = 0.1$. Satellites that
+are more massive or on wider orbits are therefore more extended. The progenitor loses mass
+during the integration. Its mass decreases linearly in $\log_{10} M$ from $M_h$ at the start
+of the integration to $\min(M_h, 10^{8}\,M_\odot)$ at the present day.
+
+\paragraph{Particle spray.}
+Streams are generated with the particle-spray method of \citet{Chen2025}. Each progenitor's
+orbit is first integrated backward in the host potential for $T_{\rm int} = 4$\,Gyr from its
+present-day coordinates. It is then integrated forward, and stream particles are released at
+a constant rate from both Lagrange points along this orbit, so the leading and trailing arms
+receive equal numbers of particles. At each release time we compute the Jacobi radius
+\begin{equation}
+    r_J = \left(\frac{G M_{\rm sat}}{\Omega^2 - \partial^2\Phi_{\rm host}/\partial r^2}\right)^{1/3},
+\end{equation}
+where $\Omega = |\mathbf{L}|/r^2$ is the orbital angular frequency. We evaluate the radial
+curvature of the potential by automatic differentiation. The six-dimensional offsets of each
+released particle, $(\Delta r/r_J,\ \phi,\ \theta,\ \Delta v/v_{\rm esc},\ \alpha,\ \beta)$,
+are drawn in the satellite frame from the multivariate Gaussian that \citet{Chen2025}
+calibrated on $N$-body simulations. Here $v_{\rm esc} = \sqrt{2 G M_{\rm sat}/\Delta r}$ is
+the local escape speed from the progenitor. The offsets are then rotated into the host frame.
+Unlike the \citet{Fardal2015} prescription, this model reproduces the offset and spread of
+stream particles found in $N$-body simulations, including the dependence on the angle
+between the release direction and the orbit.
+
+After release, each particle is integrated to $t = 0$ with a leapfrog integrator in the
+combined potential of the host and the moving, mass-losing Plummer progenitor. We use
+$n_{\rm steps} = 8000$ steps ($\Delta t = 0.5$\,Myr). The progenitor trajectory and mass at
+every release time are precomputed and shared by all particles released at that time, and
+the particle integrations are vectorized with \texttt{jax.vmap}. The spray generates
+$n_{\rm gen} = n_{\rm steps}\lceil N_i/n_{\rm steps}\rceil \ge N_i$ particles, from which
+$N_i$ are drawn at random without replacement. Each stream particle carries the index of its
+parent satellite.
+
+\subsection{Smooth Background} \label{sec:mock_bg}
+
+Real stellar halos also contain a phase-mixed component that is not associated with any
+coherent stream. We represent it with $N_{\rm bg}$ background particles drawn from the
+density profile of Equation~(\ref{eq:nr}), extended to $r_{\rm max,bg} = 200$\,kpc, with
+isotropic angular positions. The number of background particles is set by the stream
+fraction $f_{\rm stream}$,
+\begin{equation}
+    N_{\rm bg} = N_{\rm stream}^{\rm act}\,\frac{1 - f_{\rm stream}}{f_{\rm stream}},
+\end{equation}
+where $N_{\rm stream}^{\rm act}$ is the number of stream particles actually produced after
+low-mass satellites are removed. Background particles are labeled with index $-1$. The
+final mock halo combines the stream and background particles, each tagged with its parent
+satellite. From it, we compute heliocentric sky coordinates as seen by an observer at
+$(8, 0, 0)$\,kpc for the clustering analysis in Section~\ref{sec:2pcf}.
+
+\begin{deluxetable}{llcl}
+\tablecaption{Fiducial parameters of the mock stellar halos. \label{tab:mock_params}}
+\tablehead{
+\colhead{Component} & \colhead{Parameter} & \colhead{Value} & \colhead{Description}
+}
+\startdata
+\multicolumn{4}{l}{\emph{Host potential}} \\
+Disk (Miyamoto--Nagai) & $M$, $a$, $b$ & $4.77\times10^{10}\,M_\odot$, 2.6\,kpc, 0.3\,kpc & stellar disk \\
+Bulge (Hernquist)      & $M$, $a$      & $5.0\times10^{9}\,M_\odot$, 1.0\,kpc   & bulge \\
+Nucleus (Hernquist)    & $M$, $a$      & $1.81\times10^{9}\,M_\odot$, 0.069\,kpc & nucleus \\
+Halo (NFW)             & $M$, $R_s$    & $5.54\times10^{11}\,M_\odot$, 15.6\,kpc & dark halo \\
+\hline
+\multicolumn{4}{l}{\emph{Satellite population}} \\
+& $\alpha$ & $-1.9$ & halo mass-function slope \\
+& $[M_{\rm min}, M_{\rm max}]$ & $[10^{7}, 3\times10^{10}]\,M_\odot$ & halo mass range \\
+& $M_{\star,\rm tot}$ & $10^{9}\,M_\odot$ & total accreted stellar mass \\
+& SHMR & \citet{Behroozi2013}, $z=0$ & stellar-to-halo mass relation \\
+& $[r_{\rm min}, r_{\rm max}]$ & $[2, 100]$\,kpc & satellite radial range \\
+& $\beta_{\rm in}, \beta_{\rm out}$ & $-3, -3$ & density slopes \\
+& $r_{\rm vir}$ & 200\,kpc & zero point of $v_{\rm esc}$ \\
+\hline
+\multicolumn{4}{l}{\emph{Streams}} \\
+& $N_{\rm stream}$ & $5\times10^{4}$ & target stream particles \\
+& $N_{\rm min}$ & 100 & minimum particles per stream \\
+& $\eta$ & 0.1 & Plummer scale / tidal radius \\
+& $T_{\rm int}$ & 4\,Gyr & disruption time \\
+& $\Delta t$ & 0.5\,Myr & integration time step \\
+& spray model & \citet{Chen2025} & release distribution \\
+\hline
+\multicolumn{4}{l}{\emph{Background}} \\
+& $f_{\rm stream}$ & 0.5 & stream fraction \\
+& $r_{\rm max,bg}$ & 200\,kpc & background outer radius \\
+\enddata
+\end{deluxetable}

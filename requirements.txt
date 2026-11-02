@@ -3,8 +3,9 @@ numpy>=1.20
 scipy>=1.7
 astropy>=5.0
 
-# StreaMax for stream generation (JAX-accelerated particle spray)
-StreaMAX @ git+https://github.com/David-Chemaly/StreaMAX.git
+# StreaMax for stream generation (JAX-accelerated particle spray).
+# Needs the fork's dev branch (start_time/end_time API + Composite potentials).
+StreaMAX @ git+https://github.com/ybillchen/StreaMAX.git@dev
 
 # Development dependencies
 pytest>=6.0
